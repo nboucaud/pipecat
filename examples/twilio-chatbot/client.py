@@ -31,6 +31,8 @@ from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.cartesia import CartesiaTTSService
 from pipecat.services.deepgram import DeepgramSTTService
 from pipecat.services.openai import OpenAILLMService
+from pipecat.services.together import TogetherLLMService
+
 from pipecat.transports.network.websocket_client import (
     WebsocketClientParams,
     WebsocketClientTransport,
@@ -98,7 +100,7 @@ async def run_client(client_name: str, server_url: str, duration_secs: int):
         ),
     )
 
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
+    llm = TogetherLLMService(api_key=os.getenv("TOGETHER_API_KEY"), model="deepseek-ai/DeepSeek-V3")
 
     # We let the audio passthrough so we can record the conversation.
     stt = DeepgramSTTService(
