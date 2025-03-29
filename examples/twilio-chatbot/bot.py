@@ -109,7 +109,7 @@ async def run_bot(websocket_client: WebSocket, stream_sid: str, testing: bool):
         voice="aura-asteria-en",
         sample_rate=8000,
         encoding="mulaw",
-        push_silence_after_stop=True,
+        push_silence_after_stop=testing,
     )
     llm.register_function("terminate_call", terminate_call)
     # tools = [
@@ -201,17 +201,14 @@ async def run_bot(websocket_client: WebSocket, stream_sid: str, testing: bool):
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
+        logger.debug("Client connected on stream_sid: {}", stream_sid)
+
         # Start recording.
         await audiobuffer.start_recording()
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Please introduce yourself to the user."})
         await task.queue_frames([context_aggregator.user().get_context_frame()])
-
-    # @transport.event_handler("on_user_stopped_speaking")
-    # async def on_user_stopped_speaking(transport, client):
-    #     logger.debug("User stopped speaking; resuming conversation.")
-    #     await asyncio.sleep(1)
-    #     await task.queue_frames([context_aggregator.user().get_context_frame()])
+        logger.debug("Initial user context frame queued.")
 
 
     @transport.event_handler("on_client_disconnected")
@@ -230,3 +227,5 @@ async def run_bot(websocket_client: WebSocket, stream_sid: str, testing: bool):
     runner = PipelineRunner(handle_sigint=False, force_gc=True)
 
     await runner.run(task)
+    logger.debug("PipelineRunner completed for stream_sid: {}", stream_sid)
+
