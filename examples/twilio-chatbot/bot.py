@@ -25,7 +25,7 @@ from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.cartesia import CartesiaTTSService
-from pipecat.services.deepgram import DeepgramSTTService
+from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService
 from pipecat.services.openai import OpenAILLMService
 from pipecat.services.ai_services import LLMService
 
@@ -33,6 +33,9 @@ from pipecat.transports.network.fastapi_websocket import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+
+from transcript_store import transcript_store, transcript_lock
+from pipecat.frames.frames import TranscriptionFrame
 
 load_dotenv(override=True)
 
@@ -82,21 +85,42 @@ async def run_bot(websocket_client: WebSocket, stream_sid: str, testing: bool):
 
     stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"), audio_passthrough=True)
 
-    tts = CartesiaTTSService(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="cbeb2eca-346f-4942-8c10-1ba57df6a8fe",  # British Reading Lady
-        push_silence_after_stop=testing,
+
+    original_push_frame = stt.push_frame
+
+    async def custom_push_frame(frame, *args, **kwargs):
+        if isinstance(frame, TranscriptionFrame):
+            #  update  transcript store for the SID
+            async with transcript_lock:
+                # Ensure an entry exists for the current call identified by stream_sid
+                transcript_store.setdefault(stream_sid, "")
+                transcript_store[stream_sid] += frame.transcript + " "
+        await original_push_frame(frame, *args, **kwargs)
+
+    stt.push_frame = custom_push_frame
+
+    # tts = CartesiaTTSService(
+    #     api_key=os.getenv("CARTESIA_API_KEY"),
+    #     voice_id="cbeb2eca-346f-4942-8c10-1ba57df6a8fe",  # British Reading Lady
+    #     push_silence_after_stop=testing,
+    # )
+    tts = DeepgramTTSService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        voice="aura-asteria-en",
+        sample_rate=8000,
+        encoding="mulaw",
+        push_silence_after_stop=True,
     )
     llm.register_function("terminate_call", terminate_call)
-    tools = [
-        ChatCompletionToolParam(
-            type="function",
-            function={
-                "name": "terminate_call",
-                "description": "Terminate the call",
-            },
-        )
-    ]
+    # tools = [
+    #     ChatCompletionToolParam(
+    #         type="function",
+    #         function={
+    #             "name": "terminate_call",
+    #             "description": "Terminate the call",
+    #         },
+    #     )
+    # ]
 
     messages = [
         {
@@ -182,6 +206,13 @@ async def run_bot(websocket_client: WebSocket, stream_sid: str, testing: bool):
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Please introduce yourself to the user."})
         await task.queue_frames([context_aggregator.user().get_context_frame()])
+
+    # @transport.event_handler("on_user_stopped_speaking")
+    # async def on_user_stopped_speaking(transport, client):
+    #     logger.debug("User stopped speaking; resuming conversation.")
+    #     await asyncio.sleep(1)
+    #     await task.queue_frames([context_aggregator.user().get_context_frame()])
+
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):

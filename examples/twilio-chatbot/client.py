@@ -29,7 +29,7 @@ from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.cartesia import CartesiaTTSService
-from pipecat.services.deepgram import DeepgramSTTService
+from pipecat.services.deepgram import DeepgramSTTService, DeepgramTTSService
 from pipecat.services.openai import OpenAILLMService
 from pipecat.services.together import TogetherLLMService
 
@@ -41,7 +41,7 @@ from pipecat.transports.network.websocket_client import (
 load_dotenv(override=True)
 
 logger.remove(0)
-logger.add(sys.stderr, level="DEBUG")
+logger.add(sys.stderr)
 
 
 DEFAULT_CLIENT_DURATION = 30
@@ -95,7 +95,7 @@ async def run_client(client_name: str, server_url: str, duration_secs: int):
             add_wav_header=False,
             serializer=TwilioFrameSerializer(stream_sid),
             vad_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=1.5)),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.8)),
             vad_audio_passthrough=True,
         ),
     )
@@ -107,10 +107,11 @@ async def run_client(client_name: str, server_url: str, duration_secs: int):
         api_key=os.getenv("DEEPGRAM_API_KEY"),
         audio_passthrough=True,
     )
-
-    tts = CartesiaTTSService(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="e13cae5c-ec59-4f71-b0a6-266df3c9bb8e",  # Madame Mischief
+    tts = DeepgramTTSService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        voice="aura-asteria-en",    # Use your preferred Deepgram voice for the client as well
+        sample_rate=8000,
+        encoding="mulaw",
         push_silence_after_stop=True,
     )
 
